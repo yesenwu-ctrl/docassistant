@@ -12,7 +12,16 @@ with st.sidebar:
     st.header("🔑 服務商設定")
     provider_type = st.radio("模型類型", ["多模態 (可看圖)", "純文字 (省額度)"])
     api_key = st.text_input("API Key", type="password")
-    model = st.selectbox("模型選擇", ["google/gemini-flash-1.5", "openai/gpt-4o-mini", "anthropic/claude-3-haiku"])
+    model = st.selectbox("模型選擇", [
+        "google/gemini-2.5-pro-preview",
+        "google/gemini-2.0-flash-001",
+        "openai/gpt-4o-mini",
+        "openai/gpt-4o",
+        "anthropic/claude-3-5-haiku",
+        "anthropic/claude-3-5-sonnet",
+        "deepseek/deepseek-chat",
+        "deepseek/deepseek-r1",
+    ])
     st.divider()
     user_direction = st.text_area("🎯 強制注意/回應方向", placeholder="例如：強調數位轉型政策、注意資安法規...")
 
@@ -60,5 +69,8 @@ if st.button("🚀 開始分析", type="primary"):
         with st.spinner("AI 深度分析中..."):
             # 組合 Prompt 與呼叫後端 AI
             # (省略部分 Prompt 組合邏輯，同前次建議)
-            res = proc.call_ai(api_key, "https://openrouter.ai/api/v1", model, "System Prompt...", combined_content)
-            st.markdown(res)
+            res, ai_err = proc.call_ai(api_key, "https://openrouter.ai/api/v1", model, "System Prompt...", combined_content)
+            if ai_err:
+                st.error(ai_err)
+            else:
+                st.markdown(res)
