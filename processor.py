@@ -53,13 +53,24 @@ class ContentProcessor:
 
             architecture = item.get("architecture") or {}
             input_modalities = architecture.get("input_modalities") or item.get("input_modalities") or []
-            supports_vision = "image" in input_modalities or "vision" in str(item).lower()
+            output_modalities = architecture.get("output_modalities") or item.get("output_modalities") or []
+            model_id = item["id"]
+            model_text = str(item).lower()
+            supports_vision = "image" in input_modalities or "vision" in model_text
+            supports_text = not input_modalities or "text" in input_modalities
+            outputs_text = not output_modalities or "text" in output_modalities
+            non_chat_keywords = ("embedding", "moderation", "whisper", "tts", "dall-e", "image", "rerank")
+
+            if any(keyword in model_id.lower() for keyword in non_chat_keywords):
+                continue
             if require_vision and not supports_vision:
+                continue
+            if not require_vision and (supports_vision or not supports_text or not outputs_text):
                 continue
 
             models.append({
-                "id": item["id"],
-                "name": item.get("name") or item["id"],
+                "id": model_id,
+                "name": item.get("name") or model_id,
                 "supports_vision": supports_vision,
             })
 

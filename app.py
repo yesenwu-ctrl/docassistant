@@ -210,7 +210,8 @@ with st.sidebar:
         st.session_state.model_error = None
         st.session_state.model_require_vision = require_vision
 
-    if st.button("讀取可用模型", use_container_width=True):
+    model_button_label = "讀取可讀圖片模型" if require_vision else "讀取純文字模型"
+    if st.button(model_button_label, use_container_width=True):
         with st.spinner("正在向服務商讀取模型清單..."):
             st.session_state.models, st.session_state.model_error = proc.list_models(
                 api_key,
@@ -221,6 +222,9 @@ with st.sidebar:
 
     if st.session_state.model_error:
         st.warning(st.session_state.model_error)
+    elif st.session_state.models:
+        model_kind = "可讀圖片" if require_vision else "純文字"
+        st.caption(f"已載入 {len(st.session_state.models)} 個{model_kind}模型。")
 
     model_options = [model["id"] for model in st.session_state.models]
     if model_options:
