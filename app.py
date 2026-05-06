@@ -1,4 +1,11 @@
+from datetime import datetime
+from io import BytesIO
+import re
+
 import streamlit as st
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt, RGBColor
 
 from processor import ContentProcessor
 
@@ -163,14 +170,23 @@ def collect_uploaded_content(files, include_images=False):
 AI_SERVICE_CONFIGS = {
     "OpenRouter": {
         "base_url": "https://openrouter.ai/api/v1",
-        "model": "deepseek/deepseek-chat",
+        "models": {
+            "DeepSeek Chat": "deepseek/deepseek-chat",
+            "DeepSeek R1": "deepseek/deepseek-r1",
+        },
         "caption": "使用 OpenRouter 的文字模型",
         "placeholder": "貼上 OpenRouter API Key",
     },
     "Gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-2.5-flash",
-        "caption": "使用 Google Gemini 2.5 Flash 文字模型",
+        "models": {
+            "Gemini 2.5 Flash": "gemini-2.5-flash",
+            "Gemini 2.5 Pro": "gemini-2.5-pro",
+            "Gemini 2.5 Flash-Lite": "gemini-2.5-flash-lite",
+            "Gemini 2.0 Flash": "gemini-2.0-flash",
+            "Gemini 2.0 Flash-Lite": "gemini-2.0-flash-lite",
+        },
+        "caption": "使用 Google Gemini 文字模型",
         "placeholder": "貼上 Gemini API Key",
     },
 }
@@ -178,6 +194,109 @@ AI_SERVICE_CONFIGS = {
 
 def resolve_ai_config(ai_service):
     return AI_SERVICE_CONFIGS[ai_service]
+
+
+def clean_markdown_text(text):
+    cleaned = re.sub(r"^\s{0,3}#{1,6}\s*", "", text.strip())
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"__(.*?)__", r"\1", cleaned)
+    return cleaned.strip()
+
+
+def style_document(doc):
+    section = doc.sections[0]
+    section.top_margin = Inches(0.85)
+    section.bottom_margin = Inches(0.85)
+    section.left_margin = Inches(0.9)
+    section.right_margin = Inches(0.9)
+
+    styles = doc.styles
+    normal = styles["Normal"]
+    normal.font.name = "Microsoft JhengHei"
+    normal.font.size = Pt(11)
+    normal.paragraph_format.line_spacing = 1.25
+    normal.paragraph_format.space_after = Pt(6)
+
+    for style_name, size, color in [
+        ("Title", 22, RGBColor(47, 58, 43)),
+        ("Heading 1", 16, RGBColor(47, 58, 43)),
+        ("Heading 2", 13, RGBColor(73, 83, 61)),
+        ("Heading 3", 12, RGBColor(94, 76, 58)),
+    ]:
+        style = styles[style_name]
+        style.font.name = "Microsoft JhengHei"
+        style.font.size = Pt(size)
+        style.font.color.rgb = color
+        style.font.bold = True
+        style.paragraph_format.space_before = Pt(12)
+        style.paragraph_format.space_after = Pt(6)
+
+
+def add_meta_table(doc, response_format, model):
+    table = doc.add_table(rows=2, cols=2)
+    table.style = "Table Grid"
+    entries = [
+        ("輸出格式", response_format),
+        ("使用模型", model),
+        ("產製時間", datetime.now().strftime("%Y-%m-%d %H:%M")),
+        ("用途", "AI 擬答草稿"),
+    ]
+    for row_index, row in enumerate(table.rows):
+        for col_index, cell in enumerate(row.cells):
+            label, value = entries[row_index * 2 + col_index]
+            cell.text = f"{label}\n{value}"
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_after = Pt(0)
+                for run in paragraph.runs:
+                    run.font.name = "Microsoft JhengHei"
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor(74, 83, 62)
+
+
+def add_response_to_docx(doc, text):
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        heading_match = re.match(r"^(#{1,3})\s+(.+)$", line)
+        question_match = re.match(r"^(Q\d+[\.\uff0e\uff1a:、\s].+)$", line, re.IGNORECASE)
+        chinese_section_match = re.match(r"^([一二三四五六七八九十]+、.+)$", line)
+        bullet_match = re.match(r"^[-*•]\s+(.+)$", line)
+        number_match = re.match(r"^\d+[.)、]\s+(.+)$", line)
+        bold_heading_match = re.match(r"^\*\*(.+)\*\*$", line)
+
+        if heading_match:
+            level = min(len(heading_match.group(1)), 3)
+            doc.add_heading(clean_markdown_text(heading_match.group(2)), level=level)
+        elif question_match:
+            doc.add_heading(clean_markdown_text(question_match.group(1)), level=1)
+        elif chinese_section_match and len(line) <= 42:
+            doc.add_heading(clean_markdown_text(chinese_section_match.group(1)), level=2)
+        elif bold_heading_match and len(line) <= 60:
+            doc.add_heading(clean_markdown_text(bold_heading_match.group(1)), level=3)
+        elif bullet_match:
+            doc.add_paragraph(clean_markdown_text(bullet_match.group(1)), style="List Bullet")
+        elif number_match:
+            doc.add_paragraph(clean_markdown_text(number_match.group(1)), style="List Number")
+        else:
+            doc.add_paragraph(clean_markdown_text(line))
+
+
+def build_docx_bytes(text, response_format, model):
+    doc = Document()
+    style_document(doc)
+    title = doc.add_paragraph(style="Title")
+    title.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    title.add_run("AI擬答草稿")
+    add_meta_table(doc, response_format, model)
+    doc.add_paragraph("")
+    add_response_to_docx(doc, text)
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def build_prompt(reply_goal, reply_tone, response_format, source_content, reference_content, user_direction):
@@ -188,6 +307,7 @@ def build_prompt(reply_goal, reply_tone, response_format, source_content, refere
 1. 先用一段話從整體面向概述現況，交代背景、問題脈絡與目前推動方向。
 2. 接著分點說明，每一點都必須有清楚小標題，內容聚焦作法、政策效益或已呈現成果。
 3. 最後歸納重點，針對問題寫一段簡短回應。這段不用強調數據，重點放在如何解決問題、回應需求或改善現況。
+若使用者指定多個題號，請每一題都各自套用上述架構。
 """.strip()
 
     system_prompt = f"""
@@ -199,14 +319,17 @@ def build_prompt(reply_goal, reply_tone, response_format, source_content, refere
 3. 參考資料只能作為補強脈絡，不得覆蓋來源內容中的明確事實。
 4. 語氣使用「{reply_tone}」。
 5. {format_instruction}
-6. 若內容涉及法規、承諾、數字或時程，請用保守措辭並提示需人工複核。
+6. 若使用者指定題號或段落，例如 Q1、Q4，必須依照指定題號分段回覆，保留題號作為小標題；若使用者說「只要」或「僅」回覆特定題號，就不要補寫其他題號。
+7. 若來源內容本身包含訪綱題號，也要逐題回覆，不要自行改寫成單一總論。
+8. 避免使用自稱 AI、要求人工檢查、或過度說明資料來源的制式語句；若資訊不足，改用自然文字說明「仍有待確認」或「建議補充確認」。
+9. 若內容涉及法規、承諾、數字或時程，請用保守措辭，避免做超出資料範圍的承諾。
 """.strip()
 
     user_prompt = f"""
 # 我想請 AI 完成的回覆任務
 {reply_goal.strip() or "請根據來源內容擬一份完整、清楚、可直接修改使用的回覆。"}
 
-# 使用者額外要求
+# 使用者額外要求（最高優先）
 {user_direction.strip() or "無"}
 
 # 需要回覆的來源內容
@@ -224,10 +347,13 @@ with st.sidebar:
     st.header("AI 服務與金鑰")
     ai_service = st.selectbox("AI 服務", list(AI_SERVICE_CONFIGS.keys()))
     ai_config = resolve_ai_config(ai_service)
+    model_label = st.selectbox("模型", list(ai_config["models"].keys()))
     api_key = st.text_input("API Key", type="password", placeholder=ai_config["placeholder"])
     base_url = ai_config["base_url"]
-    model = ai_config["model"]
+    model = ai_config["models"][model_label]
     st.caption(ai_config["caption"])
+    if ai_service == "Gemini":
+        st.caption("若免費額度或速率達上限，系統會顯示額度上限提示；可稍後再試或改用較輕量模型。")
 
     st.divider()
     st.caption("WRITING CONTROL")
@@ -361,9 +487,17 @@ if generate:
         if ai_error:
             st.error(ai_error)
         else:
-            st.success("已生成回覆草稿，請人工複核後再送出。")
+            st.success("已生成回覆草稿，可再依實際情況微調後使用。")
             st.markdown("### AI 回覆草稿")
             st.markdown(result)
+            docx_bytes = build_docx_bytes(result, response_format, model)
+            st.download_button(
+                "下載 Word 檔",
+                data=docx_bytes,
+                file_name=f"AI擬答草稿_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
 
             with st.expander("查看本次送給 AI 的整理內容"):
                 st.markdown(user_prompt)

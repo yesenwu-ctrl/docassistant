@@ -153,7 +153,7 @@ class ContentProcessor:
         elif status == 404:
             return None, f"找不到模型「{model}」，請確認模型名稱是否正確或該模型是否仍在服務中。"
         elif status == 429:
-            return None, "請求過於頻繁，已超過速率限制，請稍待片刻後再試。"
+            return None, "已達服務商額度或速率上限，請稍待片刻後再試，或改用其他模型/付費方案。"
         elif status == 503:
             return None, "AI 服務目前暫時無法使用，請稍後再試。"
         elif not response.ok:
