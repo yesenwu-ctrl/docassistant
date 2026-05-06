@@ -181,6 +181,15 @@ def resolve_ai_config(ai_service):
 
 
 def build_prompt(reply_goal, reply_tone, response_format, source_content, reference_content, user_direction):
+    format_instruction = f"輸出格式使用「{response_format}」。"
+    if response_format == "採訪稿":
+        format_instruction = """
+輸出格式使用「採訪稿」，並嚴格依照以下架構：
+1. 先用一段話從整體面向概述現況，交代背景、問題脈絡與目前推動方向。
+2. 接著分點說明，每一點都必須有清楚小標題，內容聚焦作法、政策效益或已呈現成果。
+3. 最後歸納重點，針對問題寫一段簡短回應。這段不用強調數據，重點放在如何解決問題、回應需求或改善現況。
+""".strip()
+
     system_prompt = f"""
 你是一位謹慎、精準且善於擬稿的中文助理。你的任務不是只整理摘要，而是根據使用者提供的來源內容與參考資料，直接產出可使用的回覆草稿。
 
@@ -189,7 +198,7 @@ def build_prompt(reply_goal, reply_tone, response_format, source_content, refere
 2. 若來源內容資訊不足，請在回覆中以溫和方式標明「需要補充確認」的地方，不要捏造。
 3. 參考資料只能作為補強脈絡，不得覆蓋來源內容中的明確事實。
 4. 語氣使用「{reply_tone}」。
-5. 輸出格式使用「{response_format}」。
+5. {format_instruction}
 6. 若內容涉及法規、承諾、數字或時程，請用保守措辭並提示需人工複核。
 """.strip()
 
@@ -223,7 +232,7 @@ with st.sidebar:
     st.divider()
     st.caption("WRITING CONTROL")
     reply_tone = st.selectbox("回覆語氣", ["正式清楚", "友善專業", "簡潔直接", "溫和說明", "政策幕僚風格"])
-    response_format = st.selectbox("輸出格式", ["完整回覆信件", "正式公文式回覆", "條列說明", "Line/簡訊短回覆", "Markdown 草稿"])
+    response_format = st.selectbox("輸出格式", ["採訪稿", "完整回覆信件", "正式公文式回覆", "條列說明", "Line/簡訊短回覆", "Markdown 草稿"])
     user_direction = st.text_area("特別注意事項", placeholder="例如：避免承諾時程、引用資安法規、需要先感謝對方...")
 
 
