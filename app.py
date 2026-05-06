@@ -3,7 +3,7 @@ import streamlit as st
 from processor import ContentProcessor
 
 
-st.set_page_config(page_title="DocAssistant AI 回覆工作台", layout="wide")
+st.set_page_config(page_title="AI擬答助理", layout="wide")
 
 proc = ContentProcessor()
 
@@ -132,7 +132,7 @@ def append_text_section(buffer, title, content):
         buffer.append(f"## {title}\n{content.strip()}")
 
 
-def collect_uploaded_content(files, include_images=True):
+def collect_uploaded_content(files, include_images=False):
     text_sections = []
     image_data_urls = []
     warnings = []
@@ -158,6 +158,13 @@ def collect_uploaded_content(files, include_images=True):
             warnings.append(f"讀取「{file.name}」時發生錯誤，請改用貼上文字。")
 
     return "\n\n".join(text_sections), image_data_urls, warnings
+
+
+def resolve_ai_config(api_key):
+    stripped_key = (api_key or "").strip()
+    if stripped_key.startswith("sk-or-"):
+        return "https://openrouter.ai/api/v1", "deepseek/deepseek-chat", "OpenRouter / DeepSeek Chat"
+    return "https://api.deepseek.com", "deepseek-chat", "DeepSeek Chat"
 
 
 def build_prompt(reply_goal, reply_tone, response_format, source_content, reference_content, user_direction):
@@ -192,56 +199,10 @@ def build_prompt(reply_goal, reply_tone, response_format, source_content, refere
 
 with st.sidebar:
     st.caption("AI SERVICE")
-    st.header("模型與金鑰")
-    base_url = st.text_input("OpenAI 相容 API Base URL", value="https://openrouter.ai/api/v1")
-    api_key = st.text_input("API Key", type="password")
-    provider_type = st.radio("回覆模式", ["多模態：可讀圖片", "純文字：較省額度"], horizontal=False)
-    require_vision = provider_type.startswith("多模態")
-
-    if "models" not in st.session_state:
-        st.session_state.models = []
-    if "model_error" not in st.session_state:
-        st.session_state.model_error = None
-    if "model_require_vision" not in st.session_state:
-        st.session_state.model_require_vision = require_vision
-
-    if st.session_state.model_require_vision != require_vision:
-        st.session_state.models = []
-        st.session_state.model_error = None
-        st.session_state.model_require_vision = require_vision
-
-    model_button_label = "讀取可讀圖片模型" if require_vision else "讀取純文字模型"
-    if st.button(model_button_label, use_container_width=True):
-        with st.spinner("正在向服務商讀取模型清單..."):
-            st.session_state.models, st.session_state.model_error = proc.list_models(
-                api_key,
-                base_url,
-                require_vision=require_vision,
-            )
-            st.session_state.model_require_vision = require_vision
-
-    if st.session_state.model_error:
-        st.warning(st.session_state.model_error)
-    elif st.session_state.models:
-        model_kind = "可讀圖片" if require_vision else "純文字"
-        st.caption(f"已載入 {len(st.session_state.models)} 個{model_kind}模型。")
-
-    model_options = [model["id"] for model in st.session_state.models]
-    if model_options:
-        model = st.selectbox(
-            "模型選擇",
-            model_options,
-            format_func=lambda model_id: next(
-                (
-                    f"{item['name']}  ·  {item['id']}"
-                    for item in st.session_state.models
-                    if item["id"] == model_id
-                ),
-                model_id,
-            ),
-        )
-    else:
-        model = st.text_input("模型 ID", placeholder="請先讀取模型，或手動輸入可用模型 ID")
+    st.header("API 金鑰")
+    api_key = st.text_input("API Key", type="password", placeholder="貼上 DeepSeek 或 OpenRouter API Key")
+    base_url, model, resolved_model_label = resolve_ai_config(api_key)
+    st.caption(f"系統會自動使用：{resolved_model_label}")
 
     st.divider()
     st.caption("WRITING CONTROL")
@@ -253,11 +214,11 @@ with st.sidebar:
 st.markdown(
     """
     <section class="hero">
-        <div class="eyebrow">DocAssistant Reply Studio</div>
-        <h1>把資料交給 AI，直接產出可用回覆。</h1>
+        <div class="eyebrow">AI Reply Assistant</div>
+        <h1>AI擬答助理</h1>
         <p>
-            這個版本把原本的「摘要 md 產生器」改成回覆工作台：你可以上傳來文、圖片或貼上文字，
-            再補充參考資料與回覆方向，最後讓 AI 直接擬好一份可修改、可送出的草稿。
+            上傳來文或貼上文字，再補充參考資料與回覆方向，
+            讓 AI 直接擬好一份可修改、可送出的草稿。
         </p>
     </section>
     """,
@@ -266,7 +227,7 @@ st.markdown(
 
 metric_cols = st.columns(3)
 with metric_cols[0]:
-    st.markdown('<div class="metric-card"><strong>01</strong>設定 API 與可用模型</div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-card"><strong>01</strong>貼上 API Key</div>', unsafe_allow_html=True)
 with metric_cols[1]:
     st.markdown('<div class="metric-card"><strong>02</strong>放入來文與參考資料</div>', unsafe_allow_html=True)
 with metric_cols[2]:
@@ -278,12 +239,12 @@ left, right = st.columns([1.05, 0.95], gap="large")
 
 with left:
     st.subheader("需要回覆的內容")
-    source_tabs = st.tabs(["檔案/圖片", "網頁連結", "文字貼上"])
+    source_tabs = st.tabs(["檔案上傳", "網頁連結", "文字貼上"])
 
     with source_tabs[0]:
         uploaded_files = st.file_uploader(
-            "上傳來文、PDF、Word、文字檔或圖片",
-            type=["docx", "pdf", "txt", "md", "png", "jpg", "jpeg", "webp"],
+            "上傳來文、PDF、Word 或文字檔",
+            type=["docx", "pdf", "txt", "md"],
             accept_multiple_files=True,
         )
 
@@ -322,7 +283,7 @@ if generate:
 
     uploaded_text, uploaded_images, uploaded_warnings = collect_uploaded_content(
         uploaded_files,
-        include_images=require_vision,
+        include_images=False,
     )
     append_text_section(source_parts, "上傳內容", uploaded_text)
     image_data_urls.extend(uploaded_images)
@@ -348,16 +309,16 @@ if generate:
     source_content = "\n\n".join(source_parts)
     reference_content = "\n\n".join(reference_parts)
 
-    if not source_content.strip() and not image_data_urls:
-        st.error("請至少提供一段需要回覆的內容，或上傳一張圖片。")
-    elif not model.strip():
-        st.error("請先選擇或輸入模型 ID。")
+    if not source_content.strip():
+        st.error("請至少提供一段需要回覆的內容。")
+    elif not api_key.strip():
+        st.error("請先在左側輸入 API Key。")
     else:
         system_prompt, user_prompt = build_prompt(
             reply_goal,
             reply_tone,
             response_format,
-            source_content or "來源內容主要在隨附圖片中，請閱讀圖片後擬定回覆。",
+            source_content,
             reference_content,
             user_direction,
         )
@@ -366,7 +327,7 @@ if generate:
             result, ai_error = proc.call_ai(
                 api_key,
                 base_url,
-                model.strip(),
+                model,
                 system_prompt,
                 user_prompt,
                 image_data_urls=image_data_urls,
