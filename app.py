@@ -161,10 +161,10 @@ def collect_uploaded_content(files, include_images=False):
 
 
 AI_SERVICE_CONFIGS = {
-    "OpenRouter（DeepSeek Chat）": {
+    "OpenRouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "model": "deepseek/deepseek-chat",
-        "caption": "使用 OpenRouter 內的 DeepSeek Chat 文字模型",
+        "caption": "使用 OpenRouter 的文字模型",
         "placeholder": "貼上 OpenRouter API Key",
     },
     "Gemini": {
