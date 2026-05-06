@@ -160,11 +160,24 @@ def collect_uploaded_content(files, include_images=False):
     return "\n\n".join(text_sections), image_data_urls, warnings
 
 
-def resolve_ai_config(api_key):
-    stripped_key = (api_key or "").strip()
-    if stripped_key.startswith("sk-or-"):
-        return "https://openrouter.ai/api/v1", "deepseek/deepseek-chat", "OpenRouter / DeepSeek Chat"
-    return "https://api.deepseek.com", "deepseek-chat", "DeepSeek Chat"
+AI_SERVICE_CONFIGS = {
+    "OpenRouter（DeepSeek Chat）": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "deepseek/deepseek-chat",
+        "caption": "使用 OpenRouter 內的 DeepSeek Chat 文字模型",
+        "placeholder": "貼上 OpenRouter API Key",
+    },
+    "Gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-2.5-flash",
+        "caption": "使用 Google Gemini 2.5 Flash 文字模型",
+        "placeholder": "貼上 Gemini API Key",
+    },
+}
+
+
+def resolve_ai_config(ai_service):
+    return AI_SERVICE_CONFIGS[ai_service]
 
 
 def build_prompt(reply_goal, reply_tone, response_format, source_content, reference_content, user_direction):
@@ -199,10 +212,13 @@ def build_prompt(reply_goal, reply_tone, response_format, source_content, refere
 
 with st.sidebar:
     st.caption("AI SERVICE")
-    st.header("API 金鑰")
-    api_key = st.text_input("API Key", type="password", placeholder="貼上 DeepSeek 或 OpenRouter API Key")
-    base_url, model, resolved_model_label = resolve_ai_config(api_key)
-    st.caption(f"系統會自動使用：{resolved_model_label}")
+    st.header("AI 服務與金鑰")
+    ai_service = st.selectbox("AI 服務", list(AI_SERVICE_CONFIGS.keys()))
+    ai_config = resolve_ai_config(ai_service)
+    api_key = st.text_input("API Key", type="password", placeholder=ai_config["placeholder"])
+    base_url = ai_config["base_url"]
+    model = ai_config["model"]
+    st.caption(ai_config["caption"])
 
     st.divider()
     st.caption("WRITING CONTROL")
